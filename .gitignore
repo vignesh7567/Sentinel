@@ -1,0 +1,30 @@
+# Local .terraform directories
+.terraform/
+.terraform.lock.hcl
+
+# Terraform plan files
+*.tfplan
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+
+# Exclude override files as they are usually local
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration
+.terraformrc
+terraform.rc
+
+# OS and IDE files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.terraform/
