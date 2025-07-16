@@ -875,11 +875,16 @@ aws eks update-kubeconfig \
   --name eks-backend \
   --alias backend
 
-# Gateway cluster
+# Update Gateway cluster
 aws eks update-kubeconfig \
   --region eu-west-1 \
   --name eks-gateway \
   --alias gateway
+
+# Update Backend cluster
+aws eks update-kubeconfig --region eu-west-1 --name eks-backend --alias backend
+# To get pods
+kubectl get pods -n gateway
 
 You can list them with:
 'kubectl config get-contexts'
@@ -909,23 +914,39 @@ curl http://localhost:8080/
 This proves the app is running inside the cluster.
 
 4. Test the full flow via the gateway LoadBalancer
-A. Get the external address:
-kubectl --context gateway -n gateway get svc gateway-lb -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+a. Confirm the ConfigMap data - "kubectl --context gateway -n gateway get configmap nginx-config -o yaml"
+b. Force NGINX pods to pick up the new ConfigMap - "kubectl --context gateway -n gateway rollout restart deployment/gateway-proxy"
+c. Wait until both pods are back to Running - "kubectl --context gateway -n gateway get pods -l app=gateway -w"
+d. Verification inside the pod. Pick one of the new pods:
+"POD=$(kubectl --context gateway -n gateway get pods -l app=gateway -o jsonpath='{.items[0].metadata.name}')
+kubectl --context gateway -n gateway exec -it $POD -- cat /etc/nginx/conf.d/default.conf"
+e. Test the LoadBalancer:
+"LB=$(kubectl --context gateway -n gateway get svc gateway-lb -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+curl -v http://$LB"
 
-Store it in a shell variable:
-$LB = kubectl --context gateway -n gateway get svc gateway-lb -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
-for bash:
-LB=$(kubectl --context gateway -n gateway get svc gateway-lb -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
-
-
-Inspect the variable:
-Write-Output $LB
-for bash: echo "$LB"
-
-Invoke a web request (PowerShell’s built‑in):
-Invoke-WebRequest -Uri "http://$LB" -UseBasicParsing
-(or)
-curl "http://$LB"
-curl -s "http://$LB"
+output:
+* Host a36193053d43f4f0d9d5ff0d7ca3d1b0-1307958467.eu-west-1.elb.amazonaws.com:80 was resolved.
+* IPv6: (none)
+* IPv4: 34.248.14.108, 52.213.161.2
+*   Trying 34.248.14.108:80...
+* Connected to a36193053d43f4f0d9d5ff0d7ca3d1b0-1307958467.eu-west-1.elb.amazonaws.com (34.248.14.108) port 80
+> GET / HTTP/1.1
+> Host: a36193053d43f4f0d9d5ff0d7ca3d1b0-1307958467.eu-west-1.elb.amazonaws.com
+> User-Agent: curl/8.8.0
+> Accept: */*
+>
+* Request completely sent off
+< HTTP/1.1 200 OK
+< Server: nginx/1.29.0
+< Date: Wed, 16 Jul 2025 19:53:55 GMT
+< Content-Type: text/plain; charset=utf-8
+< Content-Length: 19
+< Connection: keep-alive
+< X-App-Name: http-echo
+< X-App-Version: 0.2.3
+<
+Hello from backend
+* Connection #0 to host a36193053d43f4f0d9d5ff0d7ca3d1b0-1307958467.eu-west-1.elb.amazonaws.com left intact
 
 ```
+

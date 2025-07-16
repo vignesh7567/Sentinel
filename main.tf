@@ -17,7 +17,7 @@ module "vpc_backend" {
 }
 
 # VPC Peering
-resource "aws_vpc_peering_connection" "gw_to_be" {
+resource "aws_vpc_peering_connection" "peer" {
   vpc_id        = module.vpc_gateway.vpc_id
   peer_vpc_id   = module.vpc_backend.vpc_id
   auto_accept   = true
@@ -31,7 +31,7 @@ resource "aws_route" "gateway_to_backend" {
   count = length(module.vpc_gateway.private_route_table_ids)
   route_table_id            = module.vpc_gateway.private_route_table_ids[count.index]
   destination_cidr_block    = var.backend_vpc_cidr
-  vpc_peering_connection_id = aws_vpc_peering_connection.gw_to_be.id
+  vpc_peering_connection_id = aws_vpc_peering_connection.peer.id
 }
 
 # Add a route in each backend-VPC private route table pointing to gateway VPC
@@ -39,7 +39,29 @@ resource "aws_route" "backend_to_gateway" {
   count = length(module.vpc_backend.private_route_table_ids)
   route_table_id            = module.vpc_backend.private_route_table_ids[count.index]
   destination_cidr_block    = var.gateway_vpc_cidr
-  vpc_peering_connection_id = aws_vpc_peering_connection.gw_to_be.id
+  vpc_peering_connection_id = aws_vpc_peering_connection.peer.id
+}
+
+# Allow gateway-pods → backend-pods on port 5678
+resource "aws_security_group_rule" "backend_allow_gateway" {
+  type              = "ingress"
+  from_port         = 5678
+  to_port           = 5678
+  protocol          = "tcp"
+  security_group_id = data.aws_eks_cluster.backend.vpc_config[0].cluster_security_group_id
+  cidr_blocks       = var.gateway_private_subnets
+  description       = "Allow gateway VPC pods to reach backend pods"
+}
+
+# Allow backend-pods → gateway-pods replies (egress is usually open by default)
+resource "aws_security_group_rule" "gateway_allow_backend" {
+  type              = "egress"
+  from_port         = 5678
+  to_port           = 5678
+  protocol          = "tcp"
+  security_group_id = data.aws_eks_cluster.gateway.vpc_config[0].cluster_security_group_id
+  cidr_blocks       = var.backend_private_subnets
+  description       = "Allow backend VPC pods to reply to gateway pods"
 }
 
 module "iam_roles" {

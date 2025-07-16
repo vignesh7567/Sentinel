@@ -1,3 +1,8 @@
+locals {
+  backend_lb_dns = kubernetes_service.backend_svc.status[0].load_balancer[0].ingress[0].hostname
+}
+
+
 ###############################################################################
 # 1. EKS Cluster Auth and Kubernetes Providers
 ###############################################################################
@@ -73,6 +78,7 @@ resource "kubernetes_service" "backend_svc" {
   metadata {
     name      = "backend-svc"
     namespace = kubernetes_namespace.backend.metadata[0].name
+    annotations = {"service.beta.kubernetes.io/aws-load-balancer-internal" = "true"}
   }
   spec {
     selector = { app = "backend" }
@@ -81,7 +87,8 @@ resource "kubernetes_service" "backend_svc" {
       target_port = 5678
       protocol    = "TCP"
     }
-    type = "ClusterIP"
+    #type = "ClusterIP"
+    type = "LoadBalancer"
   }
 }
 
@@ -91,25 +98,27 @@ resource "kubernetes_service" "backend_svc" {
 
 resource "kubernetes_namespace" "gateway" {
   provider = kubernetes.gateway
-  metadata { name = "gateway" }
   depends_on = [ module.eks_gateway ]
+  metadata { name = "gateway" }
 }
 
 # Use the actual backend ClusterIP for proxy_pass
 resource "kubernetes_config_map" "nginx_conf" {
   provider = kubernetes.gateway
-  depends_on = [ kubernetes_namespace.gateway ]
+  #depends_on = [ kubernetes_namespace.gateway ]
   metadata {
     name      = "nginx-config"
     namespace = kubernetes_namespace.gateway.metadata[0].name
   }
+  depends_on = [ kubernetes_service.backend_svc ]
 
   data = {
     "default.conf" = <<-EOT
       server {
         listen 80;
         location / {
-          proxy_pass http://${kubernetes_service.backend_svc.spec[0].cluster_ip}:80;
+          proxy_pass http://${local.backend_lb_dns}:80; 
+          #proxy_pass http://internal-ab41813d596604dac8615ace15e45158-1636255558.eu-west-1.elb.amazonaws.com:80;
         }
       }
     EOT
@@ -153,7 +162,7 @@ resource "kubernetes_deployment" "gateway_proxy" {
 
 resource "kubernetes_service" "gateway_lb" {
   provider = kubernetes.gateway
-  depends_on = [ module.eks_gateway, kubernetes_deployment.gateway_proxy ]
+  depends_on = [ kubernetes_deployment.gateway_proxy ]
   metadata {
     name      = "gateway-lb"
     namespace = kubernetes_namespace.gateway.metadata[0].name
@@ -181,4 +190,9 @@ output "backend_clusterip" {
 output "gateway_lb_address" {
   value       = kubernetes_service.gateway_lb.status[0].load_balancer[0].ingress[0].hostname
   description = "Public hostname of the NGINX gateway"
+}
+
+output "debug_backend_lb_dns" {
+  value       = local.backend_lb_dns
+  description = "The internal backend LoadBalancer DNS (for debugging)"
 }
