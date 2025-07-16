@@ -862,7 +862,7 @@ This section outlines actionable next steps for production hardening, as well as
 
 ---
 
-Kubernetes configuration to execute pods and get the output:
+### Kubernetes configuration to execute pods and get the output:
 
 Run these commands in Powershell:
 
@@ -914,12 +914,18 @@ kubectl --context gateway -n gateway get svc gateway-lb -o jsonpath='{.status.lo
 
 Store it in a shell variable:
 $LB = kubectl --context gateway -n gateway get svc gateway-lb -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+for bash:
+LB=$(kubectl --context gateway -n gateway get svc gateway-lb -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+
 
 Inspect the variable:
 Write-Output $LB
+for bash: echo "$LB"
 
 Invoke a web request (PowerShell’s built‑in):
 Invoke-WebRequest -Uri "http://$LB" -UseBasicParsing
 (or)
 curl "http://$LB"
+curl -s "http://$LB"
+
 ```
